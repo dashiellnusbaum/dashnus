@@ -1,0 +1,758 @@
+---
+title: "The Factors That Influence NBA Home Court Advantage"
+author: "Dashiell Nusbaum"
+date: "10/17/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.height = 4,
+                      fig.width = 6,
+                      fig.align = "center")
+```
+
+# The Factors That Influence NBA Home Court Advantage
+## Article: https://medium.com/push-the-pace/the-factors-that-influence-nba-home-court-advantage-2a5a602f8c1f
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+setwd("C:/Users/dashi/Documents/STAT_412_612_Dashiell_Nusbaum/Project")
+#install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+#install.packages("ggplot2",repos = "http://cran.us.r-project.org")
+#suppressPackageStartupMessages(library(tidyverse))
+#suppressPackageStartupMessages(library(ggplot2))
+#install.packages("remotes")
+#remotes::install_github("abresler/nbastatR")
+#library(nbastatR)
+#suppressPackageStartupMessages(library(dplyr))
+#install.packages("htmltab")
+#library(htmltab)
+#library(stringr)
+#install.packages("usmap",repos = "http://cran.us.r-project.org")
+#install.packages("maps")
+#install.packages("jpeg",repos = "http://cran.us.r-project.org")
+```
+
+```{r}
+library(nbastatR)
+library(tidyverse)
+library(dplyr)
+library(htmltab)
+library(ggplot2)
+library(stringr)
+```
+
+```{r, echo=FALSE, message=FALSE,warning=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+allstand<-nbastatR::standings(seasons=c(2009:2019))
+```
+
+```{r}
+allstand %>%
+  mutate(nameTeam=recode(nameTeam,"Charlotte Bobcats"="Charlotte Hornets"),
+         nameTeam=recode(nameTeam,"New Jersey Nets"="Brooklyn Nets"),
+         nameTeam=recode(nameTeam,"Los Angeles Clippers"="LA Clippers"),
+         nameTeam=recode(nameTeam,"New Orleans Hornets"="New Orleans Pelicans")) ->
+  allstand
+
+allstand %>%
+  select(yearSeason,nameTeam,slugTeam,recordOverallWins,recordHomeWins,recordHomeLosses,recordAwayWins,recordAwayLosses,nameDivison) %>%
+  group_by(nameTeam) %>%
+  mutate(W=sum(recordOverallWins),
+            Home_W=sum(recordHomeWins),
+            Away_W=sum(recordAwayWins)) %>%
+  rename(Season=yearSeason,
+         Team=nameTeam,
+         Div=nameDivison,
+         TM=slugTeam)->
+  splitstand
+
+splitstand %>%
+  mutate(Wpercent=(W/804),
+         HWpercent=(Home_W/402),
+         AWpercent=(Away_W/402)) ->
+  splitstand
+
+splitstand %>%
+  select(Season,Team,TM,Wpercent,HWpercent,AWpercent,Div,recordHomeWins,recordHomeLosses,recordAwayWins,recordAwayLosses) %>%
+  mutate(H_Adv=HWpercent-AWpercent,
+         Season_H_Adv=(recordHomeWins/(recordHomeWins+recordHomeLosses))-(recordAwayWins/(recordAwayWins+recordAwayLosses))) ->
+  splitstand #increase in win percentage when playing at home vs away
+```
+
+## Every NBA Team's Home Court Advantage In Each Season And Their Average Home Court Advantage From The 08-09 Season Through The 18-19 Season (H_Adv)
+Home court advantage = Winning percentage in home games - Winning percentage in away games
+```{r, echo=FALSE,eval=TRUE}
+splitstand %>%
+  select(Season,Team,TM,Div,Season_H_Adv,H_Adv,Wpercent,HWpercent,AWpercent) %>%
+  group_by(Team) %>%
+  arrange(Season,Team)->
+  Home_Adv
+Home_Adv
+```
+
+
+## NBA Team Home Court Advantage, Ranked
+```{r, echo=FALSE,eval=TRUE}
+suppressPackageStartupMessages(library(ggplot2))
+Home_Adv %>%
+  group_by(Team) %>%
+  summarise(Div=paste(unique(Div)),H_Adv=mean(H_Adv),Wpercent=mean(Wpercent)) %>%
+  arrange(desc(H_Adv))->
+  Home_Adv_10
+Home_Adv_10
+```
+## Winning Percentage vs Home Court Advantage
+```{r,echo=FALSE,eval=TRUE}
+ggplot(Home_Adv_10,mapping=aes(y=H_Adv,x=Wpercent)) +
+  geom_point() +
+  geom_smooth(method=lm,se=FALSE)
+```
+
+## Density Plot of Home Court Advantage
+```{r,echo=FALSE,eval=TRUE}
+ggplot(Home_Adv_10,mapping=aes(x=H_Adv)) +
+  geom_density() +
+  xlab("Home Court Advantage")
+```
+
+Roughly normal, with more teams than expected having significant home court advantages
+
+## NBA Team Home Court Advantage, Coded by NBA Division
+```{r, echo=FALSE,eval=TRUE}
+ggplot(Home_Adv_10,mapping=aes(x=reorder(Team,H_Adv),y=H_Adv,fill=Div)) +
+  geom_col() +
+  theme(axis.text.x=element_text(angle=90)) +
+  xlab("Team") +
+  ylab("Home Court Advantage") +
+  labs(fill="Division")
+```
+
+## Note: Division Does Not Always Correspond To Actual Location Of NBA Teams
+![](./nba_div1.jpg)\
+
+
+
+```{r, echo=FALSE,message=FALSE}
+suppressPackageStartupMessages(library(readr))
+coords <- read_csv(file="./arenas1.csv")
+coords %>%
+  select(Team_Name,W,N) ->
+  coords
+```
+
+```{r, echo=FALSE}
+Home_Adv_10 %>%
+  arrange(Team) ->
+  Home_Adv_10
+map_nba<-cbind(coords,Home_Adv_10)
+map_nba %>%
+  select(Team,N,W,H_Adv) ->
+  map_nba
+```
+
+```{r,echo=FALSE}
+suppressPackageStartupMessages(library(maps))
+all_states<-map_data("state")
+H_Adv_Vec <- as.vector(Home_Adv_10$H_Adv)
+```
+
+## Home Court Advantage by Location
+### (Using Arena Location Data From 2013)
+```{r,echo=FALSE,eval=TRUE}
+ggplot() +
+  geom_polygon(data=all_states,mapping=aes(x=long,y=lat,group=group),fill="white",color="grey10") +
+  geom_point(data=map_nba, aes(x=W,y=N,color=H_Adv),size=4) +
+  scale_color_gradient2(low="blue",mid="white",high="red",
+                        midpoint=median(H_Adv_Vec),name="Home Court Advantage") +
+  geom_point(data=map_nba, aes(x=W,y=N),color="black",size=4,pch=1) +
+  theme_void() +
+  theme(legend.position = "bottom") ->
+  nbamap1
+nbamap1
+
+```
+Teams that are closer together seem to generally have lower home-court advantages (Northeast, California), though this is not universally the case (e.g. Texas).
+
+```{r,echo=FALSE,eval=TRUE,message=FALSE}
+suppressPackageStartupMessages(library(htmltab))
+a_names <-c("RK","Tm","H_Gms","H_Att_Tot","H_Att_Avg","H_Att_Pct","A_Gms","A_Att_Avg","A_Att_Pct","Ovr_Gms","Ovr_Avg","Ovr_Pct")
+a_09<-htmltab("http://www.espn.com/nba/attendance/_/year/2009",,header=1:2, colNames = a_names)
+a_10<-htmltab("http://www.espn.com/nba/attendance/_/year/2010",header=1:2, colNames = a_names)
+a_11<-htmltab("http://www.espn.com/nba/attendance/_/year/2011",header=1:2, colNames = a_names)
+a_12<-htmltab("http://www.espn.com/nba/attendance/_/year/2012",header=1:2, colNames = a_names)
+a_13<-htmltab("http://www.espn.com/nba/attendance/_/year/2013",header=1:2, colNames = a_names)
+a_14<-htmltab("http://www.espn.com/nba/attendance/_/year/2014",header=1:2, colNames = a_names)
+a_15<-htmltab("http://www.espn.com/nba/attendance/_/year/2015",header=1:2, colNames = a_names)
+a_16<-htmltab("http://www.espn.com/nba/attendance/_/year/2016",header=1:2, colNames = a_names)
+a_17<-htmltab("http://www.espn.com/nba/attendance/_/year/2017",header=1:2, colNames = a_names)
+a_18<-htmltab("http://www.espn.com/nba/attendance/_/year/2018",header=1:2, colNames = a_names)
+a_19<-htmltab("http://www.espn.com/nba/attendance/_/year/2019",header=1:2, colNames = a_names)
+a_13[-c(33,32,31),] -> a_13
+a_14[-c(33,32,31),] ->a_14
+a_15[-c(33,32,31),] ->a_15
+a_16[-c(33,32,31),] ->a_16
+a_17[-c(33,32,31),] ->a_17
+a_18[-c(35,34,33,32,31),] ->a_18
+a_19[-c(35,34,33,32,31),] ->a_19
+
+a_09 %>%
+  mutate(Yr="2009") ->
+  a_09
+
+a_10 %>%
+  mutate(Yr="2010") ->
+  a_10
+
+a_11 %>%
+  mutate(Yr="2011") ->
+  a_11
+
+a_12 %>%
+  mutate(Yr="2012") ->
+  a_12
+
+a_13 %>%
+  mutate(Yr="2013") ->
+  a_13
+
+a_14 %>%
+  mutate(Yr="2014") ->
+  a_14
+
+a_15 %>%
+  mutate(Yr="2015") ->
+  a_15
+
+a_16 %>%
+  mutate(Yr="2016") ->
+  a_16
+
+a_17 %>%
+  mutate(Yr="2017") ->
+  a_17
+
+a_18 %>%
+  mutate(Yr="2018") ->
+  a_18
+
+a_19 %>%
+  mutate(Yr="2019") ->
+  a_19
+
+a_09_10<-full_join(a_09,a_10)
+a_09_11<-full_join(a_09_10,a_11)
+a_09_12<-full_join(a_09_11,a_12)
+a_09_13<-full_join(a_09_12,a_13)
+a_09_14<-full_join(a_09_13,a_14)
+a_09_15<-full_join(a_09_14,a_15)
+a_09_16<-full_join(a_09_15,a_16)
+a_09_17<-full_join(a_09_16,a_17)
+a_09_18<-full_join(a_09_17,a_18)
+a_09_19<-full_join(a_09_18,a_19)
+a_09_19 %>%
+  mutate_at(c("RK","H_Gms","H_Att_Tot","H_Att_Avg","H_Att_Pct","A_Gms","A_Att_Avg","A_Att_Pct","Ovr_Gms","Ovr_Avg","Ovr_Pct"), function(H_Att_Pct) as.numeric(as.character((gsub(",","",H_Att_Pct))))) ->
+  att_final
+```
+
+```{r,echo=FALSE}
+
+att_final %>%
+  group_by(Tm) %>%
+  summarize(H_Att_Pct=mean(H_Att_Pct)) %>%
+  arrange(Tm) ->
+  att_final_sum
+att_final_sum %>%
+  mutate(Tm=recode(Tm,"NY Knicks"="Knicks")) ->
+  att_final_sum
+tm_n<-sub(pattern = ".+ ", "", Home_Adv_10$Team)
+Home_Adv_10 %>%
+  mutate(Tm=Team) ->
+  Home_Adv_10
+Home_Adv_10$Tm[] <- tm_n
+Home_Adv_10 %>%
+  mutate(Tm=recode(Tm,"Blazers"="Trail Blazers")) ->
+  Home_Adv_10
+Att_Adv<-full_join(Home_Adv_10,att_final_sum)
+```
+
+```{r,echo=FALSE,eval=TRUE}
+Att_Adv
+ggplot(Att_Adv,mapping=aes(x=H_Adv,y=H_Att_Pct)) +
+  geom_point() +
+  xlab("Home Court Advantage") +
+  ylab("Percent of Seats Filled at Home")
+```
+Potentially, home crowd fans aren't a factor in home court advantage, but as of right now this is only a measurement of how sold out home games on average, there are other ways fan factor can manifest. In addition, could still observe home court sell outs vs road sell outs when observing advantage.
+
+
+```{r,echo=FALSE,eval=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+```
+
+```{r,echo=FALSE,message=FALSE}
+altitude <- read_csv(file="./altitude1.csv")
+altitude %>%
+  na.omit() ->
+  altitude
+altitude %>%
+  mutate(Tm_Location=recode(Tm_Location,"Oakland"="Golden State")) ->
+  altitude
+```
+
+## Altitude of Stadium by NBA Team
+### (Using Arena Location Data From 2016)
+
+```{r}
+map_nba %>%
+  mutate(Team=recode(Team,"Trail Blazers"="Trailblazers")) %>%
+  separate(Team, into = c("Team_Location","Team_Name"),sep = " (?=[^ ]+$)") ->
+  map_nba
+
+Att_Adv %>%
+  mutate(Team=recode(Team,"Trail Blazers"="Trailblazers")) %>%
+  separate(Team, into = c("Team_Location","Team_Name"),sep = " (?=[^ ]+$)") ->
+  Att_Adv
+
+altitude %>%
+  rename(Team_Location=Tm_Location) ->
+  altitude
+```
+
+```{r}
+map_nba %>%
+  mutate(Team_Location=recode(Team_Location,"Portland Trail"="Portland")) %>%
+  mutate(Team_Name=recode(Team_Name,"Blazers"="Trailblazers")) ->
+  map_nba
+Att_Adv %>%
+  mutate(Team_Location=recode(Team_Location,"Portland Trail"="Portland")) %>%
+  mutate(Team_Name=recode(Team_Name,"Blazers"="Trailblazers")) ->
+  Att_Adv
+
+
+
+left_join(map_nba, altitude, by = ("Team_Location")) ->
+  a_master
+left_join(a_master,Att_Adv, by = ("Team_Location")) ->
+  master_nba
+
+master_nba %>%
+  rename(Team_Name=Team_Name.x,
+         H_Adv=H_Adv.x) %>%
+  select(Team_Location, Team_Name, H_Adv,Wpercent,H_Att_Pct,Div,N,W,Alt) ->
+  master_nba
+
+master_nba %>%
+  rename(Longitude=W,
+         Latitude=N) ->
+  master_nba
+master_nba
+
+# for some reason only incudes alt when it's altitude and one other dataframe, can be either dataframe but not when its all three dataframes
+```
+
+```{r}
+master_nba <- master_nba %>%
+  mutate(k = 1)
+
+master_nba %>% 
+ full_join(master_nba, by = "k") %>%
+ mutate(dist = sqrt((Latitude.x - Latitude.y)^2 + (Longitude.x - Longitude.y)^2)) %>%
+ select(-k) %>%
+  group_by(Team_Location.x) %>%
+  mutate(dist=sum(dist)) %>%
+  select(Team_Location.x,Team_Name.x,H_Adv.x,Wpercent.x,H_Att_Pct.x,Div.x,Latitude.x,Longitude.x,Alt.x,dist) %>%
+  unique() %>%
+  rename(Team_Location=Team_Location.x,
+         Team_Name=Team_Name.x,
+         H_Adv=H_Adv.x,
+         Wpercent=Wpercent.x,
+         H_Att_Pct=H_Att_Pct.x,
+         Div=Div.x,
+         Latitude=Latitude.x,
+         Longitude=Longitude.x,
+         Alt=Alt.x) ->
+  master_nba
+master_nba
+```
+
+```{r}
+master_nba
+master_nba %>%
+  ggplot(mapping=aes(y=H_Adv,x=H_Att_Pct)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm)
+
+master_nba %>%
+  ggplot(mapping=aes(y=H_Adv,x=dist)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm)
+
+master_nba %>%
+  ggplot(mapping=aes(y=H_Adv,x=Alt)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm) +
+  scale_x_log10()
+
+master_nba %>%
+  ggplot(mapping=aes(y=H_Adv,x=dist)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm) +
+  scale_x_log10()
+
+master_nba %>%
+  ggplot(mapping=aes(y=H_Adv,x=Wpercent)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm)
+
+#residual plot
+#ggplot(lm(H_Adv~Wpercent, data=master_nba)) + 
+#  geom_point(aes(x=.fitted, y=.resid))
+
+
+```
+
+```{r}
+library(modelr)
+```
+
+```{r}
+Loyal<-lm(H_Att_Pct~Wpercent,data = master_nba)
+master_nba %>%
+  add_residuals(Loyal) %>%
+  rename("Loyal"="resid")->
+  master_nba
+```
+
+```{r}
+master_nba %>%
+  arrange(desc(H_Adv))
+ggplot(master_nba, mapping=aes(x=Loyal,y=H_Adv)) +
+  geom_point() +
+  geom_smooth(method=lm,se=FALSE)
+```
+
+```{r}
+#LIVING IN PARTY CITY VS HOME COURT ADVANTAGE?
+#SIZE OF CITY VS HOME COURT ADVANTAGE
+
+```
+
+```{r}
+NBA_pop <- read_csv(file="./NBA_pop.csv")
+```
+
+```{r}
+NBA_pop %>%
+  select(Team_Name,Pop_2016) ->
+  NBA_pop
+
+left_join(master_nba, NBA_pop, by = "Team_Name") ->
+  master_nba
+```
+
+```{r}
+master_nba %>%
+  mutate(lnpop=log10(Pop_2016)) ->
+  master_nba
+master_nba %>%
+  mutate(lnalt=log10(Alt)) ->
+  master_nba
+```
+
+
+```{r}
+master_nba %>%
+  ggplot(mapping=aes(x=lnpop,y=H_Adv)) +
+  geom_point()
+```
+
+```{r}
+nbamap1
+ggsave("nbamap1.png")
+```
+
+```{r}
+Home_Adv %>%
+  group_by(Season) %>%
+  mutate(Year_Adv=mean(Season_H_Adv)) %>%
+  select(Season,Year_Adv) %>%
+  unique() ->
+  nba_yr_adv
+
+ggplot(nba_yr_adv,mapping = aes(x=Season,y=Year_Adv)) +
+  geom_line() +
+  scale_x_continuous(breaks = c(2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019)) +
+  ylab("Average Home Court Advantage") +
+  theme_bw() ->
+  szn
+ggsave("szn.png")
+```
+
+```{r}
+library(GGally)
+ggcorr(master_nba,geom = "blank", label = TRUE, hjust = 0.75) +
+  geom_point(size = 10, aes(color = coefficient > 0, alpha = abs(coefficient) >= 0.5)) +
+  scale_alpha_manual(values = c("TRUE" = 0.25, "FALSE" = 0)) +
+  guides(color = FALSE, alpha = FALSE)
+```
+
+```{r}
+model <- lm(H_Adv ~ Wpercent + Loyal + lnpop + lnalt, data = master_nba)
+summary(model)
+```
+
+```{r}
+abbrev <- read_csv(file="./abbrev.csv")
+abbrev
+```
+
+```{r}
+R2.exp <- expression(paste(" ",R^2 ," = 0.5737"))
+master_nba %>%
+  left_join(abbrev,by="Team_Name") %>%
+  mutate(model_nba = (0.3355840+0.1641884*Wpercent+-0.0016819*Loyal+-0.0385756*lnpop+0.0133556*lnalt)) %>%
+  ggplot(mapping=aes(x=model_nba,y=H_Adv,label=Abbrev)) +
+  geom_point() +
+  geom_text(aes(label=Abbrev),hjust=-0.2, vjust=-0.2, size=3) +
+  geom_smooth(se=FALSE,method=lm) +
+  xlab("Model-Predicted Home Court Advantage") +
+  ylab("Actual Home Court Advantage") +
+  annotate("text", x = 0.14, y = 0.28, label=R2.exp) +
+  theme_bw() +
+  ggtitle("Expected vs. Actual Home Court Advantage: 08-09 to 18-19") + 
+  scale_y_continuous(labels=scales::percent,limits=c(0.12, 0.3),breaks=c(0.12,0.16,0.20,0.24,0.28)) +
+  scale_x_continuous(labels=scales::percent,limits=c(0.126, 0.265),breaks=c(0.12,0.16,0.20,0.24,0.28)) ->
+  nba_model_graph
+nba_model_graph
+ # ggsave("model1.png")
+  
+
+
+```
+
+```{r}
+master_nba %>%
+  ggplot(mapping=aes(x=Wpercent,y=H_Adv)) +
+  geom_point() +
+  ylab("Home Court Advantage") +
+  xlab("Overall Winning Percentage") +
+  geom_smooth(method=lm,se=FALSE) +
+  theme_bw() +
+  ggtitle("Winning Percentage") ->
+  NBAW
+
+ggsave("NBAW.png")
+
+master_nba %>%
+  ggplot(mapping=aes(x=Loyal,y=H_Adv)) +
+  geom_point() +
+  ylab("Home Court Advantage") +
+  xlab("Fan Loyalty") +
+  geom_smooth(method=lm,se=FALSE) +
+  theme_bw() +
+  ggtitle("Fan Loyalty") ->
+  NBALoyal
+
+ggsave("NBALoyal.png")
+
+master_nba %>%
+  ggplot(mapping=aes(x=lnpop,y=H_Adv)) +
+  geom_point() +
+  ylab("Home Court Advantage") +
+  xlab("Log of Metropolitan Area Population") +
+  geom_smooth(method=lm,se=FALSE) +
+  theme_bw() +
+  ggtitle("Population") ->
+  NBAlnpop
+
+ggsave("NBAlnpop.png")
+  
+
+master_nba %>%
+  ggplot(mapping=aes(x=lnalt,y=H_Adv)) +
+  geom_point() +
+  ylab("Home Court Advantage") +
+  xlab("Log of Arena Altitude") +
+  geom_smooth(method=lm,se=FALSE) +
+  theme_bw() +
+  ggtitle("Altitude") ->
+  NBAlnalt
+
+ggsave("NBAlnalt.png")
+
+```
+
+
+```{r}
+nba_calls1518 <- read_csv(file="./all_games.csv.txt")
+```
+
+```{r}
+nba_calls1518 %>%
+  mutate(disadvantaged_team=recode(disadvantaged_team,"ARL"="ATL")) %>%
+  select(call_type, disadvantaged_team, committing_team, review_decision, comment, home, away) %>%
+  filter(review_decision=="INC"|review_decision=="IC") %>%
+  mutate(hurt_by_call = ifelse(review_decision=="INC",disadvantaged_team,committing_team)) %>%
+  select(hurt_by_call,home,away) %>%
+  arrange(home) %>%
+  mutate(h_get_call = ifelse(home==hurt_by_call,0,1)) %>%
+  na.omit(h_get_call) %>%
+  group_by(home) %>%
+  summarize(h_get_call=mean(h_get_call)) %>%
+ arrange(desc(h_get_call)) ->
+  nba_calls1518
+
+```
+
+```{r}
+nba_calls1518 %>%
+  mutate(home=recode(home,"PHO"="PHX")) ->
+  nba_calls1518
+
+left_join(abbrev,nba_calls1518,by=c("Abbrev"="home")) %>%
+  select(-Abbrev) ->
+  nba_calls1518
+
+
+```
+
+```{r}
+left_join(nba_calls1518,master_nba,by=c("Team_Location","Team_Name")) ->
+  master_nba
+```
+
+```{r}
+master_nba
+ggplot(master_nba,mapping=aes(x=h_get_call,y=H_Adv)) +
+  geom_point() +
+  geom_smooth(method=lm,se=FALSE)
+```
+
+```{r}
+#PLOT JUST VS 15 18 numbers or find by team
+Home_Adv %>%
+  filter(Season=="2017"|Season=="2018") %>%
+  group_by(Team) %>%
+  summarize(Season_H_Adv=mean(Season_H_Adv)) ->
+  Home_Adv1518
+
+Home_Adv1518
+```
+
+```{r}
+left_join(Home_Adv1518,master_nba,by="Team") %>%
+  select(Team,h_get_call,Season_H_Adv) ->
+  H_Adv1518
+
+H_Adv1518$h_get_call[13] <- 0.5737705
+
+H_Adv1518
+  
+
+ggplot(H_Adv1518,mapping=aes(x=h_get_call,y=Season_H_Adv)) +
+  geom_point() +
+  geom_smooth(se=FALSE,method=lm) +
+  xlab("Percent of incorrect calls in final 2 minutes favoring home team") +
+  ylab("Home Court Advantage in 16-17 and 17-18") +
+  ggtitle("Referee Home Court Bias vs 16-17 and 17-18 Home Court Advantage") ->
+  NBAref1
+
+ggsave("NBAref.png")
+```
+
+```{r}
+#install.packages("data.table")
+#install.packages("formattable")
+library(data.table)
+```
+
+```{r}
+library(formattable)
+```
+
+```{r}
+master_nba %>%
+  unite(Team,c(Team_Location,Team_Name),sep=" ") ->
+  master_nba
+```
+
+```{r}
+master_nba %>%
+  select(Team,H_Adv) %>%
+  arrange(desc(H_Adv)) %>%
+  rename("Home Court Advantage"=H_Adv) ->
+  table_master_nba
+
+lapply(table_master_nba$`Home Court Advantage`, as.numeric) ->
+  H_num
+
+formattable::percent(H_num) ->
+  H_num
+
+table_master_nba %>%
+  mutate(`Home Court Advantage`=H_num) ->
+  table_master_nba
+```
+
+```{r}
+table_master_nba %>%
+  mutate(Rank=abs(rank(table_master_nba$`Home Court Advantage`)-31)) %>%
+  select(Rank,Team,'Home Court Advantage') %>%
+  mutate(Rank=round(Rank)) ->
+  table_master_nba
+```
+
+
+```{r}
+customGreen0 = "#DeF7E9"
+
+customGreen = "#71CA97"
+
+formattable(table_master_nba,align=c("c","l","c"),list('Rank' = formatter("span", style = ~ style(color = "#6B6E6F",font.weight = "bold")),`Team` = formatter("span", style = ~ style(color = "#6B6E6F",font.weight = "bold")),`Home Court Advantage`= color_tile(customGreen0,customGreen)))
+  
+```
+
+```{r}
+Home_Adv %>%
+  ggplot(mapping=aes(x=Season,y=Season_H_Adv,color=Team)) +
+  geom_line() +
+  theme(legend.position="none") +
+  ylim(-0.2,0.5)
+
+Home_Adv %>%
+  filter(Team=="Brooklyn Nets") %>%
+  ggplot(mapping=aes(x=Season,y=Season_H_Adv)) +
+  geom_line() +
+  ylim(-0.2,0.5)
+```
+
+```{r}
+
+master_nba %>%
+  left_join(abbrev,by="Team") %>%
+  mutate(Abbrev=ifelse(Team=="Phoenix Suns",recode(Abbrev,"NA"="PHX"),Abbrev)) %>%
+  mutate(Abbrev=ifelse(Team=="LA Clippers","LAC",Abbrev)) %>%
+  mutate(Abbrev=ifelse(Team=="Portland Trailblazers","POR",Abbrev)) ->
+  master_nba
+```
+
+```{r}
+master_nba %>%
+  mutate(H_Att_Pct=H_Att_Pct/100) %>%
+  ggplot(mapping=aes(x=percent(Wpercent),y=percent(H_Att_Pct),label=Abbrev,color=Loyal)) +
+  geom_point(size=2) +
+  scale_color_gradient(low="blue",high="red") +
+  geom_text(aes(label=Abbrev),hjust=-0.2, vjust=-0.2, size=4) +
+  geom_smooth(se=FALSE,method=lm,color="purple") +
+  xlab("Winning Percentage") +
+  ylab("Home Attendance Percentage") +
+  theme_bw() +
+  ggtitle("Attendance % vs W/L%")
+
+
+```
+
+
+
+
